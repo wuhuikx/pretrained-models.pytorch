@@ -32,9 +32,9 @@ def main():
     model = torch.load("se_resnext50_32x4d_jd.pth")
     #return
     model.eval()
-    #opt_mkldnn = True
+    opt_mkldnn = True
     #print("----model={}".format(model))
-    opt_mkldnn = False 
+    #opt_mkldnn = False 
     if opt_mkldnn:
         model = mkldnn.to_mkldnn(model)
 

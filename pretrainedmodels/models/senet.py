@@ -6,6 +6,7 @@ from __future__ import print_function, division, absolute_import
 from collections import OrderedDict
 import math
 
+import torch
 import torch.nn as nn
 from torch.utils import model_zoo
 
@@ -101,7 +102,12 @@ class SEModule(nn.Module):
         x = self.relu(x)
         x = self.fc2(x)
         x = self.sigmoid(x)
-        return module_input * x
+        
+        if x.layout == torch._mkldnn:
+            return (module_input.to_dense() * x.to_dense()).to_mkldnn()
+        else:
+            return module_input * x
+        
 
 
 class Bottleneck(nn.Module):
@@ -124,7 +130,6 @@ class Bottleneck(nn.Module):
 
         if self.downsample is not None:
             residual = self.downsample(x)
-
         out = self.se_module(out) + residual
         out = self.relu(out)
 
@@ -356,7 +361,7 @@ class SENet(nn.Module):
         x = self.avg_pool(x)
         if self.dropout is not None:
             x = self.dropout(x)
-        x = x.view(x.size(0), -1)
+        x = x.reshape(x.size(0), -1)
         x = self.last_linear(x)
         return x
 
