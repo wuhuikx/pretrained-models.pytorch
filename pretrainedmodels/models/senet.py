@@ -102,12 +102,7 @@ class SEModule(nn.Module):
         x = self.relu(x)
         x = self.fc2(x)
         x = self.sigmoid(x)
-        
-        if x.layout == torch._mkldnn:
-            return (module_input.to_dense() * x.to_dense()).to_mkldnn()
-        else:
-            return module_input * x
-        
+        return module_input * x
 
 
 class Bottleneck(nn.Module):

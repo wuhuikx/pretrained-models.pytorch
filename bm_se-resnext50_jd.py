@@ -81,7 +81,7 @@ def main():
     res['latency'] = latency
     res['throughput'] = throughput
 
-    res_file = "./log/res_{}.json".format(args.index)
+    res_file = "./res_{}.json".format(args.index)
     with open(res_file, "w") as f:
         f.write(json.dumps(res))
         #print("save {} with {}".format(res_file, res))
