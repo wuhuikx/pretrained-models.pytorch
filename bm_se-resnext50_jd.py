@@ -33,23 +33,26 @@ def main():
     #return
     model.eval()
     opt_mkldnn = True
-    #print("----model={}".format(model))
     #opt_mkldnn = False 
     if opt_mkldnn:
         model = mkldnn.to_mkldnn(model)
 
+    warmup_times = 10
     batch_size = args.batch_size
     data_size = args.data_size
-    print("---data_size={}".format(data_size))
     times = int(data_size/batch_size)
-    print("---times={}".format(times))
     w=h=320
     data = torch.rand(batch_size, 3, w, h)
-    begin = time.time()
     cnt = 0
     with torch.no_grad():
+        for i in range(warmup_times):
+            if opt_mkldnn:
+                output = model(data.to_mkldnn())
+            else:
+                output = model(data)
+		
+        begin = time.time()
         for i in range(times):
-            #print(data.shape)
             if opt_mkldnn:
                 output = model(data.to_mkldnn())
             else:
@@ -57,14 +60,12 @@ def main():
         cnt = times
         if data_size % batch_size !=0:
             data = torch.rand(data_size % batch_size, 3, w, h)
-            #data = torch.rand(batch_size, 3, 32, 32)
             if opt_mkldnn:
                 output = model(data.to_mkldnn())
             else:
                 output = model(data)
             cnt += 1
-
-    end = time.time()
+        end = time.time()
     #data_size = len(test_loader.dataset)
     throughput =  data_size/(end - begin)
     latency = (end-begin)*1000/ cnt
