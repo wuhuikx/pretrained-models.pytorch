@@ -11,6 +11,53 @@ import time
 import json
 import pretrainedmodels
 
+def save_profile_result(filename, table):
+    import xlsxwriter
+    workbook = xlsxwriter.Workbook(filename)
+    worksheet = workbook.add_worksheet()
+    keys = ["Name", "Self CPU total %", "Self CPU total", "CPU total %" , "CPU total", \
+            "CPU time avg", "Number of Calls"]
+    for j in range(len(keys)):
+        worksheet.write(0,j,keys[j])
+
+    lines = table.split("\n")
+    for i in range(3,len(lines)-4):
+        words = lines[i].split(" ")
+        j = 0 
+        for word in words:
+            if not word == "":
+                worksheet.write(i-2, j, word)
+                j += 1
+    workbook.close()
+
+def bn_folding(model):
+
+    layers = [model.layer1, model.layer2, model.layer3, model.layer4]
+    module_list = []
+    scripted_base = torch.jit.script(model.layer0)
+    torch._C._jit_pass_fold_convbn(scripted_base._c)
+    module_list.append(scripted_base)
+   
+    for layer in layers:
+        for i in range(len(layer)):
+            convbn_fold = True
+            for name, child in layer[i].named_children():
+                if name in ['downsample']:
+                    convbn_fold = False
+                    break
+            for mod in layer[i].modules():
+                if type(mod) == pretrainedmodels.models.senet.SEResNeXtBottleneck:
+                    scripted = torch.jit.script(mod)
+                    if convbn_fold:
+                        torch._C._jit_pass_fold_convbn(scripted._c)
+                    module_list.append(scripted)
+    module_list.append(torch.jit.script(model.avg_pool))
+    module_list.append(torch.jit.script(model.last_linear))
+    #print("----laster_linear={}".format(model.last_linear))
+    print("---module_list={}".format(module_list))
+    scripted_model = nn.Sequential(*module_list)
+    return scripted_model
+
 def main():
     parser = argparse.ArgumentParser(description='PyTorch Resnet50 benchmakr')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
@@ -20,9 +67,11 @@ def main():
     parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--index', type=int, default=0),
+    parser.add_argument('--profile', action='store_true', 
+                        help='Trigger profile on current topology.'),
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging training status')
-    
+
     args = parser.parse_args()
     model_name = 'se_resnext50_32x4d'
     #model = pretrainedmodels.__dict__[model_name](num_classes=1000, \
@@ -30,13 +79,13 @@ def main():
     #model.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
     #torch.save(model, "se_resnext50_32x4d_jd.pth")
     model = torch.load("se_resnext50_32x4d_jd.pth")
-    #return
-    model.eval()
     opt_mkldnn = True
     #opt_mkldnn = False 
     if opt_mkldnn:
+        model = bn_folding(model)
         model = mkldnn.to_mkldnn(model)
-
+    model.eval()
+    
     warmup_times = 10
     batch_size = args.batch_size
     data_size = args.data_size
@@ -44,6 +93,7 @@ def main():
     w=h=320
     data = torch.rand(batch_size, 3, w, h)
     cnt = 0
+    
     with torch.no_grad():
         for i in range(warmup_times):
             if opt_mkldnn:
@@ -66,8 +116,18 @@ def main():
                 output = model(data)
             cnt += 1
         end = time.time()
+        
+        if args.profile:
+            with torch.autograd.profiler.profile() as prof:
+                for i in range(10):
+                    output = model(data.to_mkldnn())
+            prof.export_chrome_trace("fp32_result.json")
+            table_res = prof.key_averages().table(sort_by="cpu_time_total")
+            print(table_res)
+            save_profile_result("fp32_result_average.xlsx", table_res)
+
     #data_size = len(test_loader.dataset)
-    throughput =  data_size/(end - begin)
+    throughput = data_size/(end - begin)
     latency = (end-begin)*1000/ cnt
     #print("Instance {}".format(args.index))
     #print("Image size {} {} {}".format(3, w, h))
@@ -85,5 +145,6 @@ def main():
     with open(res_file, "w") as f:
         f.write(json.dumps(res))
         #print("save {} with {}".format(res_file, res))
+    
 if __name__ == '__main__':
     main()
