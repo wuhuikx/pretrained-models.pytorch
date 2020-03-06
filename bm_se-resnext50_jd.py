@@ -41,10 +41,12 @@ def bn_folding(model):
     for layer in layers:
         for i in range(len(layer)):
             convbn_fold = True
+            '''
             for name, child in layer[i].named_children():
                 if name in ['downsample']:
-                    convbn_fold = False
+                    convbn_fold = False 
                     break
+            '''
             for mod in layer[i].modules():
                 if type(mod) == pretrainedmodels.models.senet.SEResNeXtBottleneck:
                     scripted = torch.jit.script(mod)
@@ -53,8 +55,7 @@ def bn_folding(model):
                     module_list.append(scripted)
     module_list.append(torch.jit.script(model.avg_pool))
     module_list.append(torch.jit.script(model.last_linear))
-    #print("----laster_linear={}".format(model.last_linear))
-    print("---module_list={}".format(module_list))
+    #print("---module_list={}".format(module_list))
     scripted_model = nn.Sequential(*module_list)
     return scripted_model
 
