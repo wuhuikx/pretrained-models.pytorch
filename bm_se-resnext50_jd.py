@@ -31,7 +31,6 @@ def save_profile_result(filename, table):
     workbook.close()
 
 def bn_folding(model):
-
     layers = [model.layer1, model.layer2, model.layer3, model.layer4]
     module_list = []
     scripted_base = torch.jit.script(model.layer0)
@@ -40,22 +39,11 @@ def bn_folding(model):
    
     for layer in layers:
         for i in range(len(layer)):
-            convbn_fold = True
-            '''
-            for name, child in layer[i].named_children():
-                if name in ['downsample']:
-                    convbn_fold = False 
-                    break
-            '''
-            for mod in layer[i].modules():
-                if type(mod) == pretrainedmodels.models.senet.SEResNeXtBottleneck:
-                    scripted = torch.jit.script(mod)
-                    if convbn_fold:
-                        torch._C._jit_pass_fold_convbn(scripted._c)
-                    module_list.append(scripted)
+            scripted = torch.jit.script(layer[i])
+            torch._C._jit_pass_fold_convbn(scripted._c)
+            module_list.append(scripted)
     module_list.append(torch.jit.script(model.avg_pool))
     module_list.append(torch.jit.script(model.last_linear))
-    #print("---module_list={}".format(module_list))
     scripted_model = nn.Sequential(*module_list)
     return scripted_model
 
