@@ -68,13 +68,14 @@ def main():
     #model.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
     #torch.save(model, "se_resnext50_32x4d_jd.pth")
     model = torch.load("se_resnext50_32x4d_jd.pth")
+    model.eval()
+
     opt_mkldnn = True
     #opt_mkldnn = False 
     if opt_mkldnn:
         model = bn_folding(model)
         model = mkldnn.to_mkldnn(model)
-    model.eval()
-    
+
     warmup_times = 10
     batch_size = args.batch_size
     data_size = args.data_size
